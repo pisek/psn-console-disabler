@@ -1,11 +1,18 @@
 package cf.pisek;
 
+import static java.time.temporal.ChronoField.HOUR_OF_DAY;
+import static java.time.temporal.ChronoField.MINUTE_OF_HOUR;
+import static java.time.temporal.ChronoField.NANO_OF_SECOND;
+import static java.time.temporal.ChronoField.SECOND_OF_MINUTE;
+
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
+import java.time.format.ResolverStyle;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
@@ -143,7 +150,7 @@ public class Disabler {
 		
 		boolean isDisablingPossible = true;
 		
-		try(PrintWriter htmlLog = new PrintWriter("log_"+ DateTimeFormatter.ISO_LOCAL_DATE.format(LocalDate.now()) +".html")){
+		try(PrintWriter htmlLog = new PrintWriter("log_"+ DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss-SSS").format(LocalDateTime.now()) +".html")){
 
 			// 1. init
 			con = generateConnection("https://account.sonyentertainmentnetwork.com/login.action", cookies);
