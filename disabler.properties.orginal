@@ -1,0 +1,7 @@
+host=smtp.hostname.gmail.com
+port=465
+login=emailToSendFrom@gmail.com
+password=password
+fromName=PSN Disabler
+toEmail=your_mail@gmail.com
+toName=YourName

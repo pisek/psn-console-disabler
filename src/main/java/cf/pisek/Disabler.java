@@ -1,5 +1,7 @@
 package cf.pisek;
 
+import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -13,6 +15,7 @@ import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
 import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Options;
+import org.apache.commons.cli.ParseException;
 import org.jsoup.Connection;
 import org.jsoup.HttpStatusException;
 import org.jsoup.Jsoup;
@@ -20,21 +23,30 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 
 import cf.pisek.exceptions.LoginException;
+import cf.pisek.notifiers.ConsoleNotifier;
+import cf.pisek.notifiers.SMTPNotifier;
 
 public class Disabler {
-
-	public static void main(String[] args) throws Exception {
+	
+	public static void main(String[] args) throws InterruptedException, ParseException {
 		
 		Options options = new Options();
 		options.addOption("u", true, "email");
 		options.addOption("p", true, "password");
-		options.addOption("t", true, "try periodically (seconds)");
+		options.addOption("t", true, "try periodically (in seconds, default 3600)");
 		options.addOption("d", false, "try to disable console (default: only checks if it is possible and notifies)");
+		options.addOption("r", true, "retry count - for one connection if failed (dafault 3)");
+		options.addOption("m", false, "notify via email (default via console only)");
 
 		CommandLineParser parser = new DefaultParser();
 		CommandLine cmd = parser.parse(options, args);
 		
 		Notifier not = new ConsoleNotifier();
+		if (cmd.hasOption("m")) {
+			not = new SMTPNotifier();
+		}
+		
+		int maxRetry = Integer.parseInt(cmd.getOptionValue("r", "3"));
 		
 		User user = null;
 		if (cmd.hasOption("u") && cmd.hasOption("p")) {
@@ -43,17 +55,18 @@ public class Disabler {
 		
 			if (cmd.hasOption("t")) {
 				// continously
-				int seconds = Integer.parseInt(cmd.getOptionValue("t"));
+				int seconds = Integer.parseInt(cmd.getOptionValue("t", "3600"));
 				while (true) {
 					
-					checkDisablingTheConsole(not, user, tryDisable);
+					retryCheckDisablingConsole(not, user, tryDisable, maxRetry);
 					
 					Thread.sleep(seconds * 1000);
+					
 				}
 			} else {
 				// only once
 				
-				checkDisablingTheConsole(not, user, tryDisable);
+				retryCheckDisablingConsole(not, user, tryDisable, maxRetry);
 				
 			}
 			
@@ -61,6 +74,28 @@ public class Disabler {
 			
 			HelpFormatter formatter = new HelpFormatter();
 			formatter.printHelp("disabler", options );
+			
+		}
+		
+	}
+
+	private static void retryCheckDisablingConsole(Notifier not, User user, boolean tryDisable, int maxRetry)
+			throws InterruptedException {
+		// retry
+		for (int i = 0; i < maxRetry; i++) {
+			
+			try {
+				checkDisablingTheConsole(not, user, tryDisable);
+				break;
+			} catch (HttpStatusException e) {
+				not.error(user, "Could not access website - possible BAN for too many connections...\n" + e);
+			} catch (LoginException e) {
+				not.error(user, "Could not login - possible wrong credentials.");
+			} catch (IOException e) {
+				not.error(user, e.toString());
+			}
+			
+			sleep();
 			
 		}
 		
@@ -76,7 +111,7 @@ public class Disabler {
 		return con;
 	}
 
-	private static void checkDisablingTheConsole(Notifier not, User user, boolean tryDisable) throws Exception {
+	private static void checkDisablingTheConsole(Notifier not, User user, boolean tryDisable) throws InterruptedException, FileNotFoundException, IOException, LoginException {
 		Connection con;
 		Document doc;
 		Map<String, String> cookies = new HashMap<> ();
@@ -86,16 +121,15 @@ public class Disabler {
 		
 		try(PrintWriter log = new PrintWriter("log_"+ DateTimeFormatter.ISO_LOCAL_DATE.format(LocalDate.now()) +".html")){
 
-			// init
+			// 1. init
 			con = generateConnection("https://account.sonyentertainmentnetwork.com/login.action", cookies);
 			log.println("<h1>LOG IN</h1>");
 			log.println(con.get());
 			
-			cookies.putAll(con.response().cookies());
-			sleep();
+			finalizeStep(con, cookies);
 			
 			
-			// log in
+			// 2. log in
 			con = generateConnection("https://account.sonyentertainmentnetwork.com/liquid/j_spring_security_check", cookies);
 			con.data("j_username", user.getUser());
 			con.data("j_password", user.getPassword());
@@ -104,8 +138,7 @@ public class Disabler {
 			doc = con.post();
 			log.println(doc);
 
-			cookies.putAll(con.response().cookies());
-			sleep();
+			finalizeStep(con, cookies);
 			
 			
 			System.out.println("Cookies: " + Arrays.toString(cookies.entrySet().toArray()));
@@ -116,7 +149,7 @@ public class Disabler {
 			}
 			
 			
-			// check disable button/error box
+			// 3. check disable button/error box
 			con = generateConnection("https://account.sonyentertainmentnetwork.com/liquid/cam/devices/device-media-list.action", cookies);
 			log.println("<h1>DEVICE MEDIA LIST</h1>");
 			doc = con.get();
@@ -128,8 +161,7 @@ public class Disabler {
 				isDisablingPossible = false;
 			}
 			
-			cookies.putAll(con.response().cookies());
-			sleep();
+			finalizeStep(con, cookies);
 			
 			
 			
@@ -137,27 +169,24 @@ public class Disabler {
 				
 				if (tryDisable) {
 					
-					// GET https://account.sonyentertainmentnetwork.com/liquid/cam/account/devices/media-devices-confirm-deactivate.action
+					// 3.1. deactivation confirmation
 					con = generateConnection("https://account.sonyentertainmentnetwork.com/liquid/cam/account/devices/media-devices-confirm-deactivate.action", cookies);
 					log.println("<h1>DEACTIVATION CONFIRMATION</h1>");
 					log.println(con.get());
 					
-					cookies.putAll(con.response().cookies());
-					sleep();
+					finalizeStep(con, cookies);
 					
 					
-					// odpalamy wylaczenie
 					
-					// POST https://account.sonyentertainmentnetwork.com/liquid/cam/devices/clear-domain.action
+					// 3.2. fire up the disabling process
 					con = generateConnection("https://account.sonyentertainmentnetwork.com/liquid/cam/devices/clear-domain.action", cookies);
 					log.println("<h1>DEACTIVATION DONE!</h1>");
 					log.println(con.post());
 					
-					cookies.putAll(con.response().cookies());
-					sleep();
+					finalizeStep(con, cookies);
 					
 					
-					// check the status of disabling the console (check again disable button/error box)
+					// 3.3. check the status of disabling the console (check again disable button/error box)
 					con = generateConnection("https://account.sonyentertainmentnetwork.com/liquid/cam/devices/device-media-list.action", cookies);
 					log.println("<h1>DEVICE MEDIA LIST</h1>");
 					doc = con.get();
@@ -166,46 +195,46 @@ public class Disabler {
 					gameMediaDevicesDeactivateSection = doc.getElementById("gameMediaDevicesDeactivateSection");
 					errorLabel = gameMediaDevicesDeactivateSection.getElementById("toutLabel");
 					if (errorLabel != null) {
-						not.yes("Success - Disabling was performed!");
+						
+						not.yes(user, "Disabling was performed successfully!");
+						
 					} else {
-						not.yes("Failed to perform console disabling... Try manually, because it is still possible...");
+						
+						not.yes(user, "Failed to perform console disabling... Please, try manually, because it is still possible!");
+						
 					}
 					
-					cookies.putAll(con.response().cookies());
-					sleep();
+					finalizeStep(con, cookies);
+					
 					
 				} else {
 					
-					not.yes("Success - It is possible to disable the console!");
+					not.yes(user, "Account is eligible for disabling!");
 					
 				}
 					
 			} else {
 				
-				not.no("Failed: " + errorLabel.text());
+				not.no(user, "Failed: " + errorLabel.text());
 				
 			}
 			
 				
 				
-			// log out (wymagany aby ponownie sie zalogowac!
+			// 4. log out (necessary to login again)
 			con = generateConnection("https://account.sonyentertainmentnetwork.com/liquid/j_spring_security_logout", cookies);
 			log.println("<h1>LOG OUT</h1>");
 			log.println(con.get());
 			
-			cookies.putAll(con.response().cookies());
-			sleep();
-			
-		} catch (LoginException e) {
-			
-			not.error("Could not login - possible wrong credentials.");
-		
-		} catch (HttpStatusException e) {
-			
-			not.error("Could not access website - possible BAN for too many connections...\n" + e);
+			finalizeStep(con, cookies);
 			
 		}
 		
+	}
+
+	private static void finalizeStep(Connection con, Map<String, String> cookies) throws InterruptedException {
+		cookies.putAll(con.response().cookies());
+		sleep();
 	}
 
 	private static void sleep() throws InterruptedException {
