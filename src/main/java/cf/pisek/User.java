@@ -8,6 +8,8 @@ public class User {
 	public User(String user, String password) {
 		this.user = user;
 		this.password = password;
+//		System.out.println(user);
+//		System.out.println(password);
 	}
 
 	public String getUser() {

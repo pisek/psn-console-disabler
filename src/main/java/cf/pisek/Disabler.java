@@ -4,6 +4,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -33,16 +34,16 @@ public class Disabler {
 		Options options = new Options();
 		options.addOption("u", true, "email");
 		options.addOption("p", true, "password");
-		options.addOption("t", true, "try periodically (in seconds, default 3600)");
+		options.addOption("t", true, "try periodically (in seconds)");
 		options.addOption("d", false, "try to disable console (default: only checks if it is possible and notifies)");
-		options.addOption("r", true, "retry count - for one connection if failed (dafault 3)");
-		options.addOption("m", false, "notify via email (default via console only)");
+		options.addOption("r", true, "retry count - for one connection if failed (default 3)");
+		options.addOption("e", false, "notify via email (default via console only)");
 
 		CommandLineParser parser = new DefaultParser();
 		CommandLine cmd = parser.parse(options, args);
 		
 		Notifier not = new ConsoleNotifier();
-		if (cmd.hasOption("m")) {
+		if (cmd.hasOption("e")) {
 			not = new SMTPNotifier();
 		}
 		
@@ -50,12 +51,12 @@ public class Disabler {
 		
 		User user = null;
 		if (cmd.hasOption("u") && cmd.hasOption("p")) {
-			user = new User(cmd.getOptionValue("u"), cmd.getOptionValue("p"));
+			user = new User(cmd.getOptionValue("u").trim(), cmd.getOptionValue("p").trim());
 			boolean tryDisable = cmd.hasOption("d");
 		
 			if (cmd.hasOption("t")) {
 				// continously
-				int seconds = Integer.parseInt(cmd.getOptionValue("t", "3600"));
+				int seconds = Integer.parseInt(cmd.getOptionValue("t"));
 				while (true) {
 					
 					retryCheckDisablingConsole(not, user, tryDisable, maxRetry);
@@ -81,8 +82,13 @@ public class Disabler {
 
 	private static void retryCheckDisablingConsole(Notifier not, User user, boolean tryDisable, int maxRetry)
 			throws InterruptedException {
+		
+		System.out.println("==================="+ DateTimeFormatter.ISO_LOCAL_DATE_TIME.format(LocalDateTime.now()) +"====================");
+		
 		// retry
 		for (int i = 0; i < maxRetry; i++) {
+			
+			System.out.println("Try no. " + (i+1));
 			
 			try {
 				checkDisablingTheConsole(not, user, tryDisable);
@@ -90,7 +96,7 @@ public class Disabler {
 			} catch (HttpStatusException e) {
 				not.error(user, "Could not access website - possible BAN for too many connections...\n" + e);
 			} catch (LoginException e) {
-				not.error(user, "Could not login - possible wrong credentials.");
+				not.error(user, "Could not login - possible wrong credentials OR captcha!");
 			} catch (IOException e) {
 				not.error(user, e.toString());
 			}
@@ -107,6 +113,7 @@ public class Disabler {
 		con.validateTLSCertificates(false);
 		con.timeout(10000);
 		con.cookies(cookies);
+		con.followRedirects(false);
 		System.out.println("Cookies: " + Arrays.toString(cookies.entrySet().toArray()));
 		return con;
 	}
@@ -143,10 +150,14 @@ public class Disabler {
 			
 			System.out.println("Cookies: " + Arrays.toString(cookies.entrySet().toArray()));
 			
+			
 			// check login status
 			if (!cookies.containsKey("rememberSignIn")) {
 				throw new LoginException();
 			}
+			
+			
+//			if (true) return;
 			
 			
 			// 3. check disable button/error box
@@ -238,7 +249,7 @@ public class Disabler {
 	}
 
 	private static void sleep() throws InterruptedException {
-		Thread.sleep(1000 + new Random().nextInt(2000));		
+		Thread.sleep(3000 + new Random().nextInt(2000));		
 	}
 
 }
