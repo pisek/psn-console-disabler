@@ -74,7 +74,7 @@ public class Disabler {
 		} else {
 			
 			HelpFormatter formatter = new HelpFormatter();
-			formatter.printHelp("disabler", options );
+			formatter.printHelp("java -jar psndisabler.jar", options );
 			
 		}
 		
