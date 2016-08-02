@@ -17,6 +17,12 @@ import org.apache.commons.cli.DefaultParser;
 import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.core.config.Configuration;
+import org.apache.logging.log4j.core.config.LoggerConfig;
 import org.jsoup.Connection;
 import org.jsoup.HttpStatusException;
 import org.jsoup.Jsoup;
@@ -29,18 +35,29 @@ import cf.pisek.notifiers.SMTPNotifier;
 
 public class Disabler {
 	
+	private static final Logger log = LogManager.getLogger();
+	
 	public static void main(String[] args) throws InterruptedException, ParseException {
-		
+
 		Options options = new Options();
 		options.addOption("u", true, "email");
 		options.addOption("p", true, "password");
 		options.addOption("t", true, "try periodically (in seconds)");
-		options.addOption("d", false, "try to disable console (default: only checks if it is possible and notifies)");
+		options.addOption("x", false, "try to disable console (default: only checks if it is possible and notifies)");
 		options.addOption("r", true, "retry count - for one connection if failed (default 3)");
 		options.addOption("e", false, "notify via email (default via console only)");
+		options.addOption("d", false, "debug");
 
 		CommandLineParser parser = new DefaultParser();
 		CommandLine cmd = parser.parse(options, args);
+		
+		if (cmd.hasOption("d")) {
+			LoggerContext ctx = (LoggerContext) LogManager.getContext(false);
+			Configuration config = ctx.getConfiguration();
+			LoggerConfig loggerConfig = config.getLoggerConfig(LogManager.ROOT_LOGGER_NAME); 
+			loggerConfig.setLevel(Level.DEBUG);
+			ctx.updateLoggers();
+		}
 		
 		Notifier not = new ConsoleNotifier();
 		if (cmd.hasOption("e")) {
@@ -52,7 +69,7 @@ public class Disabler {
 		User user = null;
 		if (cmd.hasOption("u") && cmd.hasOption("p")) {
 			user = new User(cmd.getOptionValue("u").trim(), cmd.getOptionValue("p").trim());
-			boolean tryDisable = cmd.hasOption("d");
+			boolean tryDisable = cmd.hasOption("x");
 		
 			if (cmd.hasOption("t")) {
 				// continously
@@ -74,7 +91,7 @@ public class Disabler {
 		} else {
 			
 			HelpFormatter formatter = new HelpFormatter();
-			formatter.printHelp("java -jar psndisabler.jar", options );
+			formatter.printHelp("java -jar psndisabler.jar [options]", options );
 			
 		}
 		
@@ -114,7 +131,7 @@ public class Disabler {
 		con.timeout(10000);
 		con.cookies(cookies);
 		con.followRedirects(false);
-		System.out.println("Cookies: " + Arrays.toString(cookies.entrySet().toArray()));
+		log.info("Cookies: " + Arrays.toString(cookies.entrySet().toArray()));
 		return con;
 	}
 
@@ -126,14 +143,17 @@ public class Disabler {
 		
 		boolean isDisablingPossible = true;
 		
-		try(PrintWriter log = new PrintWriter("log_"+ DateTimeFormatter.ISO_LOCAL_DATE.format(LocalDate.now()) +".html")){
+		try(PrintWriter htmlLog = new PrintWriter("log_"+ DateTimeFormatter.ISO_LOCAL_DATE.format(LocalDate.now()) +".html")){
 
 			// 1. init
 			con = generateConnection("https://account.sonyentertainmentnetwork.com/login.action", cookies);
-			log.println("<h1>LOG IN</h1>");
-			log.println(con.get());
+			htmlLog.println("<h1>LOG IN</h1>");
+			htmlLog.println(con.get());
 			
 			finalizeStep(con, cookies);
+			
+			
+//			if (true) return;
 			
 			
 			// 2. log in
@@ -141,14 +161,14 @@ public class Disabler {
 			con.data("j_username", user.getUser());
 			con.data("j_password", user.getPassword());
 			con.data("service-entity", "np");
-			log.println("<h1>LOGGED IN - ACCOUNT INFO</h1>");
+			htmlLog.println("<h1>LOGGED IN - ACCOUNT INFO</h1>");
 			doc = con.post();
-			log.println(doc);
+			htmlLog.println(doc);
 
 			finalizeStep(con, cookies);
 			
 			
-			System.out.println("Cookies: " + Arrays.toString(cookies.entrySet().toArray()));
+			log.info("Cookies: " + Arrays.toString(cookies.entrySet().toArray()));
 			
 			
 			// check login status
@@ -162,9 +182,9 @@ public class Disabler {
 			
 			// 3. check disable button/error box
 			con = generateConnection("https://account.sonyentertainmentnetwork.com/liquid/cam/devices/device-media-list.action", cookies);
-			log.println("<h1>DEVICE MEDIA LIST</h1>");
+			htmlLog.println("<h1>DEVICE MEDIA LIST</h1>");
 			doc = con.get();
-			log.println(doc);
+			htmlLog.println(doc);
 			
 			Element gameMediaDevicesDeactivateSection = doc.getElementById("gameMediaDevicesDeactivateSection");
 			Element errorLabel = gameMediaDevicesDeactivateSection.getElementById("toutLabel");
@@ -182,8 +202,8 @@ public class Disabler {
 					
 					// 3.1. deactivation confirmation
 					con = generateConnection("https://account.sonyentertainmentnetwork.com/liquid/cam/account/devices/media-devices-confirm-deactivate.action", cookies);
-					log.println("<h1>DEACTIVATION CONFIRMATION</h1>");
-					log.println(con.get());
+					htmlLog.println("<h1>DEACTIVATION CONFIRMATION</h1>");
+					htmlLog.println(con.get());
 					
 					finalizeStep(con, cookies);
 					
@@ -191,17 +211,17 @@ public class Disabler {
 					
 					// 3.2. fire up the disabling process
 					con = generateConnection("https://account.sonyentertainmentnetwork.com/liquid/cam/devices/clear-domain.action", cookies);
-					log.println("<h1>DEACTIVATION DONE!</h1>");
-					log.println(con.post());
+					htmlLog.println("<h1>DEACTIVATION DONE!</h1>");
+					htmlLog.println(con.post());
 					
 					finalizeStep(con, cookies);
 					
 					
 					// 3.3. check the status of disabling the console (check again disable button/error box)
 					con = generateConnection("https://account.sonyentertainmentnetwork.com/liquid/cam/devices/device-media-list.action", cookies);
-					log.println("<h1>DEVICE MEDIA LIST</h1>");
+					htmlLog.println("<h1>DEVICE MEDIA LIST</h1>");
 					doc = con.get();
-					log.println(doc);
+					htmlLog.println(doc);
 					
 					gameMediaDevicesDeactivateSection = doc.getElementById("gameMediaDevicesDeactivateSection");
 					errorLabel = gameMediaDevicesDeactivateSection.getElementById("toutLabel");
@@ -234,8 +254,8 @@ public class Disabler {
 				
 			// 4. log out (necessary to login again)
 			con = generateConnection("https://account.sonyentertainmentnetwork.com/liquid/j_spring_security_logout", cookies);
-			log.println("<h1>LOG OUT</h1>");
-			log.println(con.get());
+			htmlLog.println("<h1>LOG OUT</h1>");
+			htmlLog.println(con.get());
 			
 			finalizeStep(con, cookies);
 			

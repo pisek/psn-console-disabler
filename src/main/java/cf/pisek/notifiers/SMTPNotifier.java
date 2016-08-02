@@ -19,7 +19,7 @@ public class SMTPNotifier implements Notifier {
 		try {
 			prop.load(new FileInputStream("disabler.properties"));
 		} catch (IOException e) {
-			e.printStackTrace();
+			throw new RuntimeException(e);
 		}
 	}
 	
