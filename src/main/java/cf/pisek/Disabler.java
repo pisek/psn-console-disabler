@@ -8,6 +8,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Random;
 
 import org.apache.commons.cli.CommandLine;
@@ -23,6 +24,8 @@ import org.apache.logging.log4j.core.LoggerContext;
 import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.LoggerConfig;
 import org.jsoup.Connection;
+import org.jsoup.Connection.Request;
+import org.jsoup.Connection.Response;
 import org.jsoup.HttpStatusException;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -37,7 +40,7 @@ public class Disabler {
 	private static final Logger log = LogManager.getLogger();
 	
 	public static void main(String[] args) throws InterruptedException, ParseException {
-
+		
 		Options options = new Options();
 		options.addOption("u", true, "email");
 		options.addOption("p", true, "password");
@@ -46,17 +49,22 @@ public class Disabler {
 		options.addOption("r", true, "retry count - for one connection if failed (default 3)");
 		options.addOption("e", false, "notify via email (default via console only)");
 		options.addOption("d", false, "debug");
+		options.addOption("dd", false, "full debug");
 
 		CommandLineParser parser = new DefaultParser();
 		CommandLine cmd = parser.parse(options, args);
 		
+		
+		LoggerContext ctx = (LoggerContext) LogManager.getContext(false);
+		Configuration config = ctx.getConfiguration();
+		LoggerConfig loggerConfig = config.getLoggerConfig(LogManager.ROOT_LOGGER_NAME); 
 		if (cmd.hasOption("d")) {
-			LoggerContext ctx = (LoggerContext) LogManager.getContext(false);
-			Configuration config = ctx.getConfiguration();
-			LoggerConfig loggerConfig = config.getLoggerConfig(LogManager.ROOT_LOGGER_NAME); 
-			loggerConfig.setLevel(Level.DEBUG);
-			ctx.updateLoggers();
+			loggerConfig.setLevel(Level.INFO);
 		}
+		if (cmd.hasOption("dd")) {
+			loggerConfig.setLevel(Level.DEBUG);
+		}
+		ctx.updateLoggers();
 		
 		Notifier not = new ConsoleNotifier();
 		if (cmd.hasOption("e")) {
@@ -126,11 +134,21 @@ public class Disabler {
 	private static Connection generateConnection(String url, Map<String, String> cookies) {
 		Connection con = Jsoup.connect(url);
 		con.header("User-Agent", "Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.103 Safari/537.36");
+		con.header("Host", "account.sonyentertainmentnetwork.com");
+		con.header("Connection", "keep-alive");
+		con.header("Pragma", "no-cache");
+		con.header("Cache-Control", "no-cache");
+		con.header("Upgrade-Insecure-Requests", "1");
+		con.header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8");
+		con.header("DNT", "1");
+		con.header("Accept-Encoding", "gzip, deflate, sdch, br");
+		con.header("Accept-Language", "q=0.8,en-US;q=0.6,en;q=0.4,ko;q=0.2,pt;q=0.2,es;q=0.2,da;q=0.2");
+//		con.header("Referer", "https://account.sonyentertainmentnetwork.com/login.action");
+		con.header("Upgrade-Insecure-Requests", "1");
 		con.validateTLSCertificates(false);
 		con.timeout(10000);
 		con.cookies(cookies);
 		con.followRedirects(false);
-		log.info("Cookies: " + Arrays.toString(cookies.entrySet().toArray()));
 		return con;
 	}
 
@@ -148,6 +166,10 @@ public class Disabler {
 			con = generateConnection("https://account.sonyentertainmentnetwork.com/login.action", cookies);
 			htmlLog.println("<h1>LOG IN</h1>");
 			htmlLog.println(con.get());
+			log.info("Init - getting initial session");
+			log.info("Cookies: " + Arrays.toString(cookies.entrySet().toArray()));
+			log.debug(parseHeaders(con.request()));
+			log.debug(parseHeaders(con.response()));
 			
 			finalizeStep(con, cookies);
 			
@@ -163,17 +185,20 @@ public class Disabler {
 			htmlLog.println("<h1>LOGGED IN - ACCOUNT INFO</h1>");
 			doc = con.post();
 			htmlLog.println(doc);
+			log.info("Log in");
+			log.info("Cookies: " + Arrays.toString(cookies.entrySet().toArray()));
+			log.debug(parseHeaders(con.request()));
+			log.debug(parseHeaders(con.response()));
 
 			finalizeStep(con, cookies);
 			
 			
-			log.info("Cookies: " + Arrays.toString(cookies.entrySet().toArray()));
-			
-			
 			// check login status
+			log.info("Checking login status");
 			if (!cookies.containsKey("rememberSignIn")) {
 				throw new LoginException();
 			}
+			log.info("Logged in!");
 			
 			
 //			if (true) return;
@@ -184,6 +209,10 @@ public class Disabler {
 			htmlLog.println("<h1>DEVICE MEDIA LIST</h1>");
 			doc = con.get();
 			htmlLog.println(doc);
+			log.info("Checking disable button availability");
+			log.info("Cookies: " + Arrays.toString(cookies.entrySet().toArray()));
+			log.debug(parseHeaders(con.request()));
+			log.debug(parseHeaders(con.response()));
 			
 			Element gameMediaDevicesDeactivateSection = doc.getElementById("gameMediaDevicesDeactivateSection");
 			Element errorLabel = gameMediaDevicesDeactivateSection.getElementById("toutLabel");
@@ -203,6 +232,10 @@ public class Disabler {
 					con = generateConnection("https://account.sonyentertainmentnetwork.com/liquid/cam/account/devices/media-devices-confirm-deactivate.action", cookies);
 					htmlLog.println("<h1>DEACTIVATION CONFIRMATION</h1>");
 					htmlLog.println(con.get());
+					log.info("Going to confirmation of disabling");
+					log.info("Cookies: " + Arrays.toString(cookies.entrySet().toArray()));
+					log.debug(parseHeaders(con.request()));
+					log.debug(parseHeaders(con.response()));
 					
 					finalizeStep(con, cookies);
 					
@@ -212,6 +245,10 @@ public class Disabler {
 					con = generateConnection("https://account.sonyentertainmentnetwork.com/liquid/cam/devices/clear-domain.action", cookies);
 					htmlLog.println("<h1>DEACTIVATION DONE!</h1>");
 					htmlLog.println(con.post());
+					log.info("Disabling...");
+					log.info("Cookies: " + Arrays.toString(cookies.entrySet().toArray()));
+					log.debug(parseHeaders(con.request()));
+					log.debug(parseHeaders(con.response()));
 					
 					finalizeStep(con, cookies);
 					
@@ -221,6 +258,10 @@ public class Disabler {
 					htmlLog.println("<h1>DEVICE MEDIA LIST</h1>");
 					doc = con.get();
 					htmlLog.println(doc);
+					log.info("Checking if disabling went OK...");
+					log.info("Cookies: " + Arrays.toString(cookies.entrySet().toArray()));
+					log.debug(parseHeaders(con.request()));
+					log.debug(parseHeaders(con.response()));
 					
 					gameMediaDevicesDeactivateSection = doc.getElementById("gameMediaDevicesDeactivateSection");
 					errorLabel = gameMediaDevicesDeactivateSection.getElementById("toutLabel");
@@ -255,6 +296,10 @@ public class Disabler {
 			con = generateConnection("https://account.sonyentertainmentnetwork.com/liquid/j_spring_security_logout", cookies);
 			htmlLog.println("<h1>LOG OUT</h1>");
 			htmlLog.println(con.get());
+			log.info("Log out");
+			log.info("Cookies: " + Arrays.toString(cookies.entrySet().toArray()));
+			log.debug(parseHeaders(con.request()));
+			log.debug(parseHeaders(con.response()));
 			
 			finalizeStep(con, cookies);
 			
@@ -269,6 +314,25 @@ public class Disabler {
 
 	private static void sleep() throws InterruptedException {
 		Thread.sleep(3000 + new Random().nextInt(2000));		
+	}
+	
+	private static String parseHeaders(Connection.Base<?> res) {
+		String head = "";
+		if (res instanceof Request) {
+			head = res.method() + " REQUEST";
+		} else if (res instanceof Response) {
+			head = res.method() + " RESPONSE";
+		}
+		StringBuilder sb = new StringBuilder("=================== ").append(head).append(" ===================\n")
+				.append("HEADERS:\n");
+		for (Entry<String, String> ent : res.headers().entrySet()) {
+			sb.append(ent.getKey()).append(": ").append(ent.getValue()).append('\n');
+		}
+		sb.append("COOKIES:\n");
+		for (Entry<String, String> ent : res.cookies().entrySet()) {
+			sb.append(ent.getKey()).append(": ").append(ent.getValue()).append('\n');
+		}
+		return sb.toString();
 	}
 
 }

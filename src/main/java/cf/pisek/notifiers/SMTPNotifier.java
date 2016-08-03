@@ -11,7 +11,7 @@ import org.apache.commons.mail.SimpleEmail;
 import cf.pisek.Notifier;
 import cf.pisek.User;
 
-public class SMTPNotifier implements Notifier {
+public class SMTPNotifier extends ConsoleNotifier implements Notifier {
 	
 	private Properties prop = new Properties();
 
@@ -25,7 +25,7 @@ public class SMTPNotifier implements Notifier {
 	
 	@Override
 	public void yes(User user, String text) {
-		System.out.println("YES: " + text);
+		super.yes(user, text);
 		
 		try {
 			
@@ -50,12 +50,12 @@ public class SMTPNotifier implements Notifier {
 
 	@Override
 	public void no(User user, String text) {
-		System.out.println("NO: " + text);
+		super.no(user, text);
 	}
 
 	@Override
 	public void error(User user, String text) {
-		System.err.println("ERROR: " + text);
+		super.error(user, text);
 		
 		try {
 			
