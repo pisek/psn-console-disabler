@@ -9,17 +9,17 @@ public class ConsoleNotifier implements Notifier {
 
 	@Override
 	public void yes(User user, String text) {
-		System.out.println(ANSI_GREEN+text+ANSI_RESET);
+		System.out.println(BG_BLACK + FG_GREEN + text + RESET);
 	}
 
 	@Override
 	public void error(User user, String text) {
-		System.out.println(ANSI_RED+text+ANSI_RESET);
+		System.out.println(BG_BLACK + FG_RED + text + RESET);
 	}
 
 	@Override
 	public void no(User user, String text) {
-		System.out.println(ANSI_YELLOW+text+ANSI_RESET);
+		System.out.println(BG_BLACK + FG_YELLOW + text + RESET);
 	}
 
 }

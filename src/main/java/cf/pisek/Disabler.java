@@ -35,6 +35,8 @@ import cf.pisek.exceptions.LoginException;
 import cf.pisek.notifiers.ConsoleNotifier;
 import cf.pisek.notifiers.SMTPNotifier;
 
+import static cf.pisek.AnsiColors.*;
+
 public class Disabler {
 	
 	private static final Logger log = LogManager.getLogger();
@@ -107,12 +109,12 @@ public class Disabler {
 	private static void retryCheckDisablingConsole(Notifier not, User user, boolean tryDisable, int maxRetry)
 			throws InterruptedException {
 		
-		System.out.println("==================="+ DateTimeFormatter.ISO_LOCAL_DATE_TIME.format(LocalDateTime.now()) +"====================");
+		System.out.println(BG_BLACK + FG_CYAN + "==================="+ DateTimeFormatter.ISO_LOCAL_DATE_TIME.format(LocalDateTime.now()) +"====================" + RESET);
 		
 		// retry
 		for (int i = 0; i < maxRetry; i++) {
 			
-			System.out.println("Try no. " + (i+1));
+			System.out.println(BG_BLACK + FG_CYAN + "Try no. " + (i+1) + RESET);
 			
 			try {
 				checkDisablingTheConsole(not, user, tryDisable);
@@ -166,7 +168,7 @@ public class Disabler {
 			con = generateConnection("https://account.sonyentertainmentnetwork.com/login.action", cookies);
 			htmlLog.println("<h1>LOG IN</h1>");
 			htmlLog.println(con.get());
-			log.info("Init - getting initial session");
+			System.out.println(BG_BLACK + FG_CYAN + "Init - getting initial session" + RESET);
 			log.info("Cookies: " + Arrays.toString(cookies.entrySet().toArray()));
 			log.debug(parseHeaders(con.request()));
 			log.debug(parseHeaders(con.response()));
@@ -185,7 +187,7 @@ public class Disabler {
 			htmlLog.println("<h1>LOGGED IN - ACCOUNT INFO</h1>");
 			doc = con.post();
 			htmlLog.println(doc);
-			log.info("Log in");
+			System.out.println(BG_BLACK + FG_CYAN + "Log in" + RESET);
 			log.info("Cookies: " + Arrays.toString(cookies.entrySet().toArray()));
 			log.debug(parseHeaders(con.request()));
 			log.debug(parseHeaders(con.response()));
@@ -194,115 +196,126 @@ public class Disabler {
 			
 			
 			// check login status
-			log.info("Checking login status");
+			System.out.println(BG_BLACK + FG_CYAN + "Checking login status" + RESET);
 			if (!cookies.containsKey("rememberSignIn")) {
 				throw new LoginException();
 			}
-			log.info("Logged in!");
+			System.out.println(BG_BLACK + FG_GREEN + "Logged in!" + RESET);
 			
 			
 //			if (true) return;
 			
 			
-			// 3. check disable button/error box
-			con = generateConnection("https://account.sonyentertainmentnetwork.com/liquid/cam/devices/device-media-list.action", cookies);
-			htmlLog.println("<h1>DEVICE MEDIA LIST</h1>");
-			doc = con.get();
-			htmlLog.println(doc);
-			log.info("Checking disable button availability");
-			log.info("Cookies: " + Arrays.toString(cookies.entrySet().toArray()));
-			log.debug(parseHeaders(con.request()));
-			log.debug(parseHeaders(con.response()));
-			
-			Element gameMediaDevicesDeactivateSection = doc.getElementById("gameMediaDevicesDeactivateSection");
-			Element errorLabel = gameMediaDevicesDeactivateSection.getElementById("toutLabel");
-			if (errorLabel != null) {
-				isDisablingPossible = false;
-			}
-			
-			finalizeStep(con, cookies);
+			try {	// in order to logout afterwards
 			
 			
-			
-			if (isDisablingPossible) {
+				// 3. check disable button/error box
+				con = generateConnection("https://account.sonyentertainmentnetwork.com/liquid/cam/devices/device-media-list.action", cookies);
+				htmlLog.println("<h1>DEVICE MEDIA LIST</h1>");
+				doc = con.get();
+				htmlLog.println(doc);
+				System.out.println(BG_BLACK + FG_CYAN + "Checking disable button availability" + RESET);
+				log.info("Cookies: " + Arrays.toString(cookies.entrySet().toArray()));
+				log.debug(parseHeaders(con.request()));
+				log.debug(parseHeaders(con.response()));
 				
-				if (tryDisable) {
+				Element gameMediaDevicesDeactivateSection = doc.getElementById("gameMediaDevicesDeactivateSection");
+				Element gameDeviceDescription1 = gameMediaDevicesDeactivateSection.getElementById("gameDeviceDescription1");
+				if (gameDeviceDescription1 == null) {	// it there is no gameDeviceDescription1, there is no console connected 
+					not.yes(user, "No console connected!");
+					return;
+				}
+				Element errorLabel = gameMediaDevicesDeactivateSection.getElementById("toutLabel");
+				if (errorLabel != null) {	// error label says that you have done disabling and you have to wait 6months etc
+					isDisablingPossible = false;
+				}
+				
+				finalizeStep(con, cookies);
+				
+				
+				
+				if (isDisablingPossible) {
 					
-					// 3.1. deactivation confirmation
-					con = generateConnection("https://account.sonyentertainmentnetwork.com/liquid/cam/account/devices/media-devices-confirm-deactivate.action", cookies);
-					htmlLog.println("<h1>DEACTIVATION CONFIRMATION</h1>");
-					htmlLog.println(con.get());
-					log.info("Going to confirmation of disabling");
-					log.info("Cookies: " + Arrays.toString(cookies.entrySet().toArray()));
-					log.debug(parseHeaders(con.request()));
-					log.debug(parseHeaders(con.response()));
-					
-					finalizeStep(con, cookies);
-					
-					
-					
-					// 3.2. fire up the disabling process
-					con = generateConnection("https://account.sonyentertainmentnetwork.com/liquid/cam/devices/clear-domain.action", cookies);
-					htmlLog.println("<h1>DEACTIVATION DONE!</h1>");
-					htmlLog.println(con.post());
-					log.info("Disabling...");
-					log.info("Cookies: " + Arrays.toString(cookies.entrySet().toArray()));
-					log.debug(parseHeaders(con.request()));
-					log.debug(parseHeaders(con.response()));
-					
-					finalizeStep(con, cookies);
-					
-					
-					// 3.3. check the status of disabling the console (check again disable button/error box)
-					con = generateConnection("https://account.sonyentertainmentnetwork.com/liquid/cam/devices/device-media-list.action", cookies);
-					htmlLog.println("<h1>DEVICE MEDIA LIST</h1>");
-					doc = con.get();
-					htmlLog.println(doc);
-					log.info("Checking if disabling went OK...");
-					log.info("Cookies: " + Arrays.toString(cookies.entrySet().toArray()));
-					log.debug(parseHeaders(con.request()));
-					log.debug(parseHeaders(con.response()));
-					
-					gameMediaDevicesDeactivateSection = doc.getElementById("gameMediaDevicesDeactivateSection");
-					errorLabel = gameMediaDevicesDeactivateSection.getElementById("toutLabel");
-					if (errorLabel != null) {
+					if (tryDisable) {
 						
-						not.yes(user, "Disabling was performed successfully!");
+						// 3.1. deactivation confirmation
+						con = generateConnection("https://account.sonyentertainmentnetwork.com/liquid/cam/account/devices/media-devices-confirm-deactivate.action", cookies);
+						htmlLog.println("<h1>DEACTIVATION CONFIRMATION</h1>");
+						htmlLog.println(con.get());
+						System.out.println(BG_BLACK + FG_CYAN + "Going to confirmation of disabling" + RESET);
+						log.info("Cookies: " + Arrays.toString(cookies.entrySet().toArray()));
+						log.debug(parseHeaders(con.request()));
+						log.debug(parseHeaders(con.response()));
+						
+						finalizeStep(con, cookies);
+						
+						
+						
+						// 3.2. fire up the disabling process
+						con = generateConnection("https://account.sonyentertainmentnetwork.com/liquid/cam/devices/clear-domain.action", cookies);
+						htmlLog.println("<h1>DEACTIVATION DONE!</h1>");
+						htmlLog.println(con.post());
+						System.out.println(BG_BLACK + FG_CYAN + "Disabling..." + RESET);
+						log.info("Cookies: " + Arrays.toString(cookies.entrySet().toArray()));
+						log.debug(parseHeaders(con.request()));
+						log.debug(parseHeaders(con.response()));
+						
+						finalizeStep(con, cookies);
+						
+						
+						// 3.3. check the status of disabling the console (check again disable button/error box)
+						con = generateConnection("https://account.sonyentertainmentnetwork.com/liquid/cam/devices/device-media-list.action", cookies);
+						htmlLog.println("<h1>DEVICE MEDIA LIST</h1>");
+						doc = con.get();
+						htmlLog.println(doc);
+						System.out.println(BG_BLACK + FG_CYAN + "Checking if disabling went OK..." + RESET);
+						log.info("Cookies: " + Arrays.toString(cookies.entrySet().toArray()));
+						log.debug(parseHeaders(con.request()));
+						log.debug(parseHeaders(con.response()));
+						
+						gameMediaDevicesDeactivateSection = doc.getElementById("gameMediaDevicesDeactivateSection");
+						errorLabel = gameMediaDevicesDeactivateSection.getElementById("toutLabel");
+						if (errorLabel != null) {
+							
+							not.yes(user, "Disabling was performed successfully!");
+							
+						} else {
+							
+							not.yes(user, "Failed to perform console disabling... Please, try manually, because it is still possible!");
+							
+						}
+						
+						finalizeStep(con, cookies);
+						
 						
 					} else {
 						
-						not.yes(user, "Failed to perform console disabling... Please, try manually, because it is still possible!");
+						not.yes(user, "Account is eligible for disabling!");
 						
 					}
-					
-					finalizeStep(con, cookies);
-					
-					
+						
 				} else {
 					
-					not.yes(user, "Account is eligible for disabling!");
+					not.no(user, "Failed: " + errorLabel.text());
 					
 				}
-					
-			} else {
+			
 				
-				not.no(user, "Failed: " + errorLabel.text());
+			} finally {
+				
+				// 4. log out (necessary to login again)
+				con = generateConnection("https://account.sonyentertainmentnetwork.com/liquid/j_spring_security_logout", cookies);
+				htmlLog.println("<h1>LOG OUT</h1>");
+				htmlLog.println(con.get());
+				System.out.println(BG_BLACK + FG_CYAN + "Log out" + RESET);
+				log.info("Cookies: " + Arrays.toString(cookies.entrySet().toArray()));
+				log.debug(parseHeaders(con.request()));
+				log.debug(parseHeaders(con.response()));
+				
+				finalizeStep(con, cookies);
 				
 			}
-			
 				
-				
-			// 4. log out (necessary to login again)
-			con = generateConnection("https://account.sonyentertainmentnetwork.com/liquid/j_spring_security_logout", cookies);
-			htmlLog.println("<h1>LOG OUT</h1>");
-			htmlLog.println(con.get());
-			log.info("Log out");
-			log.info("Cookies: " + Arrays.toString(cookies.entrySet().toArray()));
-			log.debug(parseHeaders(con.request()));
-			log.debug(parseHeaders(con.response()));
-			
-			finalizeStep(con, cookies);
-			
 		}
 		
 	}
