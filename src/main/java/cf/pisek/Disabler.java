@@ -86,6 +86,8 @@ public class Disabler {
 				while (true) {
 					
 					retryCheckDisablingConsole(not, user, tryDisable, maxRetry);
+
+					System.out.println(BG_BLACK + FG_CYAN + "Next checking at " + DateTimeFormatter.ISO_DATE_TIME.format(LocalDateTime.now().plusSeconds(seconds)) + RESET);
 					
 					Thread.sleep(seconds * 1000);
 					
