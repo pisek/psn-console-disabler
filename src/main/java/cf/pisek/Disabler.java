@@ -41,7 +41,8 @@ public class Disabler {
 	
 	private static final Logger log = LogManager.getLogger();
 	
-	public static void main(String[] args) throws InterruptedException, ParseException {
+	public static void main(String[] args) throws ParseException {
+		
 		
 		Options options = new Options();
 		options.addOption("u", true, "email");
@@ -55,8 +56,12 @@ public class Disabler {
 
 		CommandLineParser parser = new DefaultParser();
 		CommandLine cmd = parser.parse(options, args);
-		
-		
+
+		Notifier not = new ConsoleNotifier();
+		if (cmd.hasOption("e")) {
+			not = new SMTPNotifier();
+		}
+			
 		LoggerContext ctx = (LoggerContext) LogManager.getContext(false);
 		Configuration config = ctx.getConfiguration();
 		LoggerConfig loggerConfig = config.getLoggerConfig(LogManager.ROOT_LOGGER_NAME); 
@@ -67,45 +72,49 @@ public class Disabler {
 			loggerConfig.setLevel(Level.DEBUG);
 		}
 		ctx.updateLoggers();
-		
-		Notifier not = new ConsoleNotifier();
-		if (cmd.hasOption("e")) {
-			not = new SMTPNotifier();
-		}
-		
+			
 		int maxRetry = Integer.parseInt(cmd.getOptionValue("r", "3"));
-		
+
 		User user = null;
 		if (cmd.hasOption("u") && cmd.hasOption("p")) {
 			user = new User(cmd.getOptionValue("u").trim(), cmd.getOptionValue("p").trim());
 			boolean tryDisable = cmd.hasOption("x");
-		
-			if (cmd.hasOption("t")) {
-				// continously
-				int seconds = Integer.parseInt(cmd.getOptionValue("t"));
-				while (true) {
+
+			try {
+			
+				if (cmd.hasOption("t")) {
+					// continously
+					int seconds = Integer.parseInt(cmd.getOptionValue("t"));
+					while (true) {
+						
+						retryCheckDisablingConsole(not, user, tryDisable, maxRetry);
+	
+						System.out.println(BG_BLACK + FG_CYAN + "Next checking at " + DateTimeFormatter.ISO_DATE_TIME.format(LocalDateTime.now().plusSeconds(seconds)) + RESET);
+						
+						Thread.sleep(seconds * 1000);
+						
+					}
+				} else {
+					// only once
 					
 					retryCheckDisablingConsole(not, user, tryDisable, maxRetry);
-
-					System.out.println(BG_BLACK + FG_CYAN + "Next checking at " + DateTimeFormatter.ISO_DATE_TIME.format(LocalDateTime.now().plusSeconds(seconds)) + RESET);
-					
-					Thread.sleep(seconds * 1000);
 					
 				}
-			} else {
-				// only once
 				
-				retryCheckDisablingConsole(not, user, tryDisable, maxRetry);
+			} catch (Exception e) {
+				
+				not.error(new User("", ""), e.toString());
+				e.printStackTrace();
 				
 			}
-			
+				
 		} else {
-			
+
 			HelpFormatter formatter = new HelpFormatter();
 			formatter.printHelp("java -jar psndisabler.jar [options]", options );
-			
+
 		}
-		
+			
 	}
 
 	private static void retryCheckDisablingConsole(Notifier not, User user, boolean tryDisable, int maxRetry)
